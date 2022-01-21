@@ -1,0 +1,58 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - vars/vars.yml
+  
+  tasks:
+    - name: instal lemp
+      apt: name={{ item }} state=latest update_cache=yes
+      loop: [ 'nginx', 'mysql-server', 'php-fpm', 'php-mysql', 'python3-pymysql']
+
+#config mysql
+    - name: set root password
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_pwd }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+      ignore_errors: True
+
+#config nginx
+    - name: set conf
+      template:
+        src: "config/nginx.conf.j2"
+        dest: "/etc/nginx/sites-available/{{ conf_name }}"
+
+    - name: copy test page
+      template:
+        src: "config/index.php.j2"
+        dest: "/var/www/html/index.php"
+
+    - name: Enable site
+      file:
+        src: "/etc/nginx/sites-available/{{ conf_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ conf_name }}"
+        state: link
+      notify: reload nginx
+
+    - name: Delete default site
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      notify: reload nginx
+
+# config ufw
+    - name: "UFW allow http"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+
+#
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
